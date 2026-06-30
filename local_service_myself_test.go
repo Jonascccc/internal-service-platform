@@ -1,0 +1,180 @@
+package main
+
+import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+)
+
+// helper: resets shared state between tests
+func resetStore() {
+	servicesMu.Lock()
+	servicesByID = map[string]Service{}
+	servicesMu.Unlock()
+}
+
+func TestHealthReturns200(t *testing.T) {
+	// YOUR TURN:
+	// 1. create a GET request to /health using httptest.NewRequest
+	// 2. create a httptest.NewRecorder()
+	// 3. call healthHandler(recorder, request)
+	// 4. check recorder.Code == 200
+	req := httptest.NewRequest(http.MethodGet, "/health", nil)
+	rec := httptest.NewRecorder()
+
+	healthHandler(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
+	}
+}
+
+func TestVersionReturns200(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/version", nil)
+	rec := httptest.NewRecorder()
+
+	versionHandler(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
+	}
+}
+
+func TestCreateServiceReturns201(t *testing.T) {
+	// 1. resetStore()
+	// 2. POST body: {"id":"svc-1","name":"My Service","owner":"team-a"}
+	// 3. call serviceHandler
+	// 4. check 201
+	resetStore()
+
+	body := `{"id":"svc-1","name":"Payment","owner":"Payment Team"}`
+
+	readerbody := strings.NewReader(body)
+
+	req := httptest.NewRequest(http.MethodPost, "/services", readerbody)
+	rec := httptest.NewRecorder()
+
+	serviceHandler(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected status %d, got %d, body: %s", http.StatusCreated, rec.Code, rec.Body.String())
+	}
+
+}
+
+func TestCreateServiceMissingIDReturns400(t *testing.T) {
+	// body missing "id" field → expect 400
+	resetStore()
+
+	body := `{"name":"Payment","owner":"Payment Team"}`
+
+	readerBody := strings.NewReader(body)
+
+	req := httptest.NewRequest(http.MethodPost, "/services", readerBody)
+	rec := httptest.NewRecorder()
+
+	serviceHandler(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected status %d, got %d, body: %s", http.StatusBadRequest, rec.Code, rec.Body.String())
+	}
+}
+
+func TestCreateServiceDuplicateIDReturns409(t *testing.T) {
+	// 1. resetStore()
+	// 2. create the same service twice
+	// 3. second call → expect 409
+	resetStore()
+
+	body := `{"id":"svc-01","name":"Payment","owner":"Payment Team","environment":"dev"}`
+
+	readerBody := strings.NewReader(body)
+	readerBody2 := strings.NewReader(body)
+
+	req1 := httptest.NewRequest(http.MethodPost, "/services", readerBody)
+	rec1 := httptest.NewRecorder()
+	serviceHandler(rec1, req1)
+
+	req2 := httptest.NewRequest(http.MethodPost, "/services", readerBody2)
+	rec2 := httptest.NewRecorder()
+	serviceHandler(rec2, req2)
+
+	if rec1.Code != http.StatusCreated {
+		t.Fatalf("expected status %d, got %d, body: %s", http.StatusCreated, rec1.Code, rec1.Body.String())
+	}
+
+	if rec2.Code != http.StatusConflict {
+		t.Fatalf("expected status %d, got %d, body: %s", http.StatusConflict, rec2.Code, rec2.Body.String())
+	}
+}
+
+func TestListServicesReturnsSortedByID(t *testing.T) {
+	// 1. resetStore()
+	// 2. create "svc-b" then "svc-a"
+	// 3. GET /services
+	// 4. decode response, check order: svc-a comes before svc-b
+	resetStore()
+
+	body1 := `{"id":"svc-b","name":"Payment","owner":"Payment Team","environment":"dev"}`
+	body2 := `{"id":"svc-a","name":"Payment","owner":"Payment Team","environment":"dev"}`
+
+	readerBody1 := strings.NewReader(body1)
+	readerBody2 := strings.NewReader(body2)
+
+	req1 := httptest.NewRequest(http.MethodPost, "/services", readerBody1)
+	rec1 := httptest.NewRecorder()
+	serviceHandler(rec1, req1)
+
+	if rec1.Code != http.StatusCreated {
+		t.Fatalf("expected status %d, got %d, body: %s", http.StatusCreated, rec1.Code, rec1.Body.String())
+	}
+
+	req2 := httptest.NewRequest(http.MethodPost, "/services", readerBody2)
+	rec2 := httptest.NewRecorder()
+	serviceHandler(rec2, req2)
+
+	if rec2.Code != http.StatusCreated {
+		t.Fatalf("expected status %d, got %d, body: %s", http.StatusCreated, rec2.Code, rec2.Body.String())
+	}
+
+	req3 := httptest.NewRequest(http.MethodGet, "/services", nil)
+	rec3 := httptest.NewRecorder()
+
+	serviceHandler(rec3, req3)
+
+	if rec3.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d, body: %s", http.StatusOK, rec3.Code, rec3.Body.String())
+	}
+
+	var services []Service
+	err := json.NewDecoder(rec3.Body).Decode(&services)
+	if err != nil {
+		t.Fatalf("failed to decode response body: %v", err)
+	}
+
+	if len(services) != 2 {
+		t.Fatalf("the length of services is not correct, expected %d, got %d", 2, len(services))
+	}
+
+	if services[0].ID != "svc-a" || services[1].ID != "svc-b" {
+		t.Fatalf("the returned services is not in the correct order, got %q then %q, expected %q then %q", services[0].ID, services[1].ID, "svc-a", "svc-b")
+	}
+}
+
+func TestCreateServiceInvalidEnvironmentReturns400(t *testing.T) {
+	resetStore()
+
+	body := `{"id":"svc-01","name":"Payment Service","owner":"Payment Team","environment":"test"}`
+	readerbody := strings.NewReader(body)
+
+	req := httptest.NewRequest(http.MethodPost, "/services", readerbody)
+	rec := httptest.NewRecorder()
+
+	serviceHandler(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected status %d, got %d", http.StatusBadRequest, rec.Code)
+	}
+}

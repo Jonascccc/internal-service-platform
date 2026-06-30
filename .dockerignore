@@ -1,0 +1,17 @@
+# Git metadata
+.git
+.gitignore
+
+# Local Go build artifacts
+*.exe
+*.test
+
+# Go test and coverage output
+coverage.out
+.gocache
+
+# Editor and operating-system files
+.vscode
+.idea
+.DS_Store
+Thumbs.db

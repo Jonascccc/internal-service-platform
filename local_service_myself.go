@@ -1,0 +1,209 @@
+package main
+
+import (
+	"encoding/json"
+	"log"
+	"net/http"
+	"sort"
+	"sync"
+)
+
+type ErrorResponse struct {
+	Error ErrorDetail `json:"error"`
+}
+
+type ErrorDetail struct {
+	Code    string `json:"code"`
+	Message string `json:"message"`
+}
+
+type HealthResponse struct {
+	Status  string `json:"status"`
+	Service string `json:"service"`
+}
+
+type VersionResponse struct {
+	Service string `json:"service"`
+	Version string `json:"version"`
+}
+
+type Service struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Owner       string `json:"owner"`
+	Environment string `json:"environment"`
+}
+
+var (
+	servicesByID = map[string]Service{}
+	servicesMu   sync.Mutex
+)
+
+func writeJSON(w http.ResponseWriter, status int, data any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+
+	if err := json.NewEncoder(w).Encode(data); err != nil {
+		log.Println("failed to encode json:", err)
+	}
+}
+
+func healthHandler(w http.ResponseWriter, s *http.Request) {
+	if s.Method != http.MethodGet {
+		writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{
+			Error: ErrorDetail{
+				Code:    "method_not_allowed",
+				Message: "method not allowed",
+			},
+		})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, HealthResponse{
+		Status:  "ok",
+		Service: "service-registry-api",
+	})
+}
+
+func versionHandler(w http.ResponseWriter, s *http.Request) {
+	if s.Method != http.MethodGet {
+		writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{
+			Error: ErrorDetail{
+				Code:    "method_not_allowed",
+				Message: "method not allowed",
+			},
+		})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, VersionResponse{
+		Service: "service-registry-api",
+		Version: "v0.0.1",
+	})
+}
+
+func createServiceHandler(w http.ResponseWriter, s *http.Request) {
+	var service Service
+
+	if err := json.NewDecoder(s.Body).Decode(&service); err != nil {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{
+			Error: ErrorDetail{
+				Code:    "invalid_request",
+				Message: "invalid json request body",
+			},
+		})
+		return
+	}
+
+	if service.ID == "" {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{
+			Error: ErrorDetail{
+				Code:    "invalid_request",
+				Message: "id is required",
+			},
+		})
+		return
+	}
+
+	if service.Name == "" {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{
+			Error: ErrorDetail{
+				Code:    "invalid_request",
+				Message: "name is required",
+			},
+		})
+		return
+	}
+
+	if service.Owner == "" {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{
+			Error: ErrorDetail{
+				Code:    "invalid_request",
+				Message: "owner is required",
+			},
+		})
+		return
+	}
+
+	if service.Environment == "" {
+		service.Environment = "dev"
+	}
+
+	if service.Environment != "dev" && service.Environment != "staging" && service.Environment != "prod" {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{
+			Error: ErrorDetail{
+				Code:    "invalid_request",
+				Message: "environment must be one of: dev, staging, prod",
+			},
+		})
+		return
+	}
+
+	servicesMu.Lock()
+	defer servicesMu.Unlock()
+
+	if _, exists := servicesByID[service.ID]; exists {
+		writeJSON(w, http.StatusConflict, ErrorResponse{
+			Error: ErrorDetail{
+				Code:    "conflict",
+				Message: "service id already exists",
+			},
+		})
+		return
+	}
+	servicesByID[service.ID] = service
+
+	writeJSON(w, http.StatusCreated, service)
+}
+
+func listServicesHandler(w http.ResponseWriter, s *http.Request) {
+	servicesMu.Lock()
+	services := make([]Service, 0, len(servicesByID))
+
+	for _, service := range servicesByID {
+		services = append(services, service)
+	}
+	servicesMu.Unlock()
+	sort.Slice(services, func(i, j int) bool {
+		return services[i].ID < services[j].ID
+	})
+
+	writeJSON(w, http.StatusOK, services)
+}
+
+func serviceHandler(w http.ResponseWriter, s *http.Request) {
+	if s.Method != http.MethodPost && s.Method != http.MethodGet {
+		writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{
+			Error: ErrorDetail{
+				Code:    "method_not_allowed",
+				Message: "method not allowed",
+			},
+		})
+		return
+	}
+
+	if s.Method == http.MethodPost {
+		createServiceHandler(w, s)
+		return
+	}
+
+	if s.Method == http.MethodGet {
+		listServicesHandler(w, s)
+		return
+	}
+}
+
+func main() {
+	mux := http.NewServeMux()
+
+	mux.HandleFunc("/health", healthHandler)
+	mux.HandleFunc("/version", versionHandler)
+	mux.HandleFunc("/services", serviceHandler)
+
+	addr := ":8080"
+	log.Println("start listening on port 8080")
+
+	if err := http.ListenAndServe(addr, mux); err != nil {
+		log.Fatal(err)
+	}
+}
