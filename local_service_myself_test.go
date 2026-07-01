@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 // helper: resets shared state between tests
@@ -176,5 +177,89 @@ func TestCreateServiceInvalidEnvironmentReturns400(t *testing.T) {
 
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected status %d, got %d", http.StatusBadRequest, rec.Code)
+	}
+}
+
+func TestCreateServiceSetsTimestamps(t *testing.T) {
+	resetStore()
+
+	body := `{"id":"svc-time","name":"Timed Service","owner":"Platform Team"}`
+
+	req := httptest.NewRequest(http.MethodPost, "/services", strings.NewReader(body))
+	rec := httptest.NewRecorder()
+
+	serviceHandler(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected status %d, got %d, body: %s", http.StatusCreated, rec.Code, rec.Body.String())
+	}
+
+	var service Service
+	err := json.NewDecoder(rec.Body).Decode(&service)
+	if err != nil {
+		t.Fatalf("failed to decode response body: %v", err)
+	}
+
+	if service.CreatedAt == "" {
+		t.Fatalf("expected created_at to be set")
+	}
+
+	if service.UpdatedAt == "" {
+		t.Fatalf("expected updated_at to be set")
+	}
+
+	_, err = time.Parse(time.RFC3339, service.CreatedAt)
+	if err != nil {
+		t.Fatalf("expected created_at to use RFC3339 format, got %q", service.CreatedAt)
+	}
+
+	_, err = time.Parse(time.RFC3339, service.UpdatedAt)
+	if err != nil {
+		t.Fatalf("expected updated_at to use RFC3339 format, got %q", service.UpdatedAt)
+	}
+
+}
+
+func TestListServicesIncludesTimestamps(t *testing.T) {
+	resetStore()
+	var services []Service
+
+	body := `{"id":"svc-time","owner":"david","name":"david chen"}`
+
+	req := httptest.NewRequest(http.MethodPost, "/services", strings.NewReader(body))
+	rec := httptest.NewRecorder()
+
+	serviceHandler(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected status %d, got %d, body: %s", http.StatusCreated, rec.Code, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/services", nil)
+	rec = httptest.NewRecorder()
+
+	serviceHandler(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected code %d, got %d", http.StatusOK, rec.Code)
+	}
+
+	err := json.NewDecoder(rec.Body).Decode(&services)
+	if err != nil {
+		t.Fatalf("failed to decode response body: %v", rec.Body)
+	}
+
+	if len(services) != 1 {
+		t.Fatalf("expected 1 service, got %d", len(services))
+	}
+
+	_, err = time.Parse(time.RFC3339, services[0].CreatedAt)
+	if err != nil {
+		t.Fatalf("expected created_at to use RFC3339 format, got %q", services[0].CreatedAt)
+	}
+
+	_, err = time.Parse(time.RFC3339, services[0].UpdatedAt)
+	if err != nil {
+		t.Fatalf("expected updated_at to use RFC3339 format, got %q", services[0].UpdatedAt)
 	}
 }

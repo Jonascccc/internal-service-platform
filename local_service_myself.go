@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"sort"
 	"sync"
+	"time"
 )
 
 type ErrorResponse struct {
@@ -28,10 +29,16 @@ type VersionResponse struct {
 }
 
 type Service struct {
-	ID          string `json:"id"`
-	Name        string `json:"name"`
-	Owner       string `json:"owner"`
-	Environment string `json:"environment"`
+	ID           string `json:"id"`
+	Name         string `json:"name"`
+	Owner        string `json:"owner"`
+	Environment  string `json:"environment"`
+	RepoURL      string `json:"repo_url"`
+	SlackChannel string `json:"slack_channel"`
+	Tier         string `json:"tier"`
+	Language     string `json:"language"`
+	CreatedAt    string `json:"created_at"`
+	UpdatedAt    string `json:"updated_at"`
 }
 
 var (
@@ -139,10 +146,13 @@ func createServiceHandler(w http.ResponseWriter, s *http.Request) {
 		return
 	}
 
-	servicesMu.Lock()
-	defer servicesMu.Unlock()
+	now := time.Now().UTC().Format(time.RFC3339)
+	service.CreatedAt = now
+	service.UpdatedAt = now
 
+	servicesMu.Lock()
 	if _, exists := servicesByID[service.ID]; exists {
+		servicesMu.Unlock()
 		writeJSON(w, http.StatusConflict, ErrorResponse{
 			Error: ErrorDetail{
 				Code:    "conflict",
@@ -152,6 +162,7 @@ func createServiceHandler(w http.ResponseWriter, s *http.Request) {
 		return
 	}
 	servicesByID[service.ID] = service
+	servicesMu.Unlock()
 
 	writeJSON(w, http.StatusCreated, service)
 }
