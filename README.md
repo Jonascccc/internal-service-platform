@@ -333,3 +333,31 @@ This project is intended to practice:
 * Protecting shared state with mutexes
 * Returning deterministic API responses
 * Writing clean project documentation
+
+
+## Service Metadata Contract
+
+The platform API stores service ownership and operational metadata used by deployment, observability, and support workflows.
+
+Required fields:
+- `id`
+- `name`
+- `owner`
+
+Defaults:
+- `environment`: `dev`
+- `tier`: `tier-3`
+- `language`: `go`
+
+Validation guardrails:
+- `environment` must be one of `dev`, `staging`, `prod`
+- `tier` must be one of `tier-1`, `tier-2`, `tier-3`
+- `language` must be one of `go`, `python`, `node`, `java`
+- `repo_url`, if provided, must start with `http://` or `https://`
+- `slack_channel`, if provided, must start with `#`
+
+Server-generated fields:
+- `created_at`
+- `updated_at`
+
+These defaults and validation rules model platform guardrails: teams can self-serve service registration, while the platform keeps metadata consistent enough for automation, dashboards, alert routing, and release workflows.

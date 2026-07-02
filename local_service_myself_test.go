@@ -262,4 +262,122 @@ func TestListServicesIncludesTimestamps(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected updated_at to use RFC3339 format, got %q", services[0].UpdatedAt)
 	}
+
+}
+
+func TestCreateServiceDefaultsTier(t *testing.T) {
+	resetStore()
+
+	body := `{"id":"svc-tier","name":"Tiered Service","owner":"Platform Team"}`
+
+	req := httptest.NewRequest(http.MethodPost, "/services", strings.NewReader(body))
+	rec := httptest.NewRecorder()
+
+	serviceHandler(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected code %d, but got status code %d, the error body is %v", http.StatusCreated, rec.Code, rec.Body.String())
+	}
+
+	var service Service
+	err := json.NewDecoder(rec.Body).Decode(&service)
+	if err != nil {
+		t.Fatalf("unable to decode the reponse body: %v", err)
+	}
+
+	if service.Tier != "tier-3" {
+		t.Fatalf("expected default tier is %q, got %q", "tier-3", service.Tier)
+	}
+
+}
+
+func TestCreateServiceInvalidTierReturns400(t *testing.T) {
+	resetStore()
+
+	body := `{"id":"svc-bad-tier","name":"Bad Tier Service","owner":"Platform Team","tier":"critical"}`
+
+	req := httptest.NewRequest(http.MethodPost, "/services", strings.NewReader(body))
+	rec := httptest.NewRecorder()
+
+	serviceHandler(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected code is %d, got %d", http.StatusBadRequest, rec.Code)
+	}
+}
+
+func TestCreateServiceDefaultsLanguage(t *testing.T) {
+	resetStore()
+
+	body := `{"id":"svc-lang","name":"Language Service","owner":"Platform Team"}`
+
+	req := httptest.NewRequest(http.MethodPost, "/services", strings.NewReader(body))
+	rec := httptest.NewRecorder()
+
+	serviceHandler(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected code %d, got %d", http.StatusCreated, rec.Code)
+	}
+
+	var service Service
+	err := json.NewDecoder(rec.Body).Decode(&service)
+	if err != nil {
+		t.Fatalf("unable to parse the response result: %v", err)
+	}
+
+	if service.Language != "go" {
+		t.Fatalf("expected default language is %q, got %q", "go", service.Language)
+	}
+}
+
+func TestCreateServiceInvalidLanguageReturns400(t *testing.T) {
+	resetStore()
+
+	body := `{"id":"svc-bad-lang","name":"Bad Language Service","owner":"Platform Team","language":"ruby"}`
+
+	req := httptest.NewRequest(http.MethodPost, "/services", strings.NewReader(body))
+	rec := httptest.NewRecorder()
+
+	serviceHandler(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected code %d, got %d, body is %q", http.StatusBadRequest, rec.Code, rec.Body.String())
+	}
+
+	// POST /services
+	// call serviceHandler
+	// expect http.StatusBadRequest
+}
+
+func TestCreateServiceInvalidRepoURLReturns400(t *testing.T) {
+	resetStore()
+
+	body := `{"id":"svc-bad-repo","name":"Bad Repo Service","owner":"Platform Team","repo_url":"not-a-url"}`
+
+	req := httptest.NewRequest(http.MethodPost, "/services", strings.NewReader(body))
+	rec := httptest.NewRecorder()
+
+	serviceHandler(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected code %d, got %d, body is: %q", http.StatusBadRequest, rec.Code, rec.Body.String())
+	}
+	// call serviceHandler
+	// expect http.StatusBadRequest
+}
+
+func TestCreateServiceInvalidSlackChannelReturns400(t *testing.T) {
+	resetStore()
+
+	body := `{"id":"svc-bad-slack","name":"Bad Slack Service","owner":"Platform Team","slack_channel":"platform-alerts"}`
+
+	req := httptest.NewRequest(http.MethodPost, "/services", strings.NewReader(body))
+	rec := httptest.NewRecorder()
+
+	serviceHandler(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected code %d, got %d, the body is: %v", http.StatusBadRequest, rec.Code, rec.Body.String())
+	}
 }

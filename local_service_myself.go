@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 )
@@ -141,6 +142,54 @@ func createServiceHandler(w http.ResponseWriter, s *http.Request) {
 			Error: ErrorDetail{
 				Code:    "invalid_request",
 				Message: "environment must be one of: dev, staging, prod",
+			},
+		})
+		return
+	}
+
+	if service.Tier == "" {
+		service.Tier = "tier-3"
+	}
+
+	if service.Tier != "tier-1" && service.Tier != "tier-2" && service.Tier != "tier-3" {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{
+			Error: ErrorDetail{
+				Code:    "invalid_request",
+				Message: "tier must be either tier-1, tier-2, or tier-3",
+			},
+		})
+		return
+	}
+
+	if service.Language == "" {
+		service.Language = "go"
+	}
+
+	if service.Language != "go" && service.Language != "python" && service.Language != "node" && service.Language != "java" {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{
+			Error: ErrorDetail{
+				Code:    "invalid_request",
+				Message: "language must be either go, python, node or java",
+			},
+		})
+		return
+	}
+
+	if service.RepoURL != "" && !strings.HasPrefix(service.RepoURL, "https://") && !strings.HasPrefix(service.RepoURL, "http://") {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{
+			Error: ErrorDetail{
+				Code:    "invalid_request",
+				Message: "repo_url must start with either http:// or https://",
+			},
+		})
+		return
+	}
+
+	if service.SlackChannel != "" && !strings.HasPrefix(service.SlackChannel, "#") {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{
+			Error: ErrorDetail{
+				Code:    "invalid_request",
+				Message: "expected prefix of # for slack channel name",
 			},
 		})
 		return
