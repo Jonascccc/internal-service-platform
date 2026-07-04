@@ -305,19 +305,15 @@ Current limitations:
 * No authentication or authorization
 * No update or delete endpoints
 * No pagination or filtering
-* No automated tests yet
-* No CI pipeline yet
 
 ## Future Improvements
 
 Possible next steps:
 
-* Add unit tests
 * Add structured logging
 * Add request logging middleware
 * Add update/delete endpoints
 * Add persistent storage with PostgreSQL
-* Add service ownership metadata such as Slack channel or repository URL
 * Add filtering by environment
 * Add OpenAPI documentation
 
@@ -361,3 +357,40 @@ Server-generated fields:
 - `updated_at`
 
 These defaults and validation rules model platform guardrails: teams can self-serve service registration, while the platform keeps metadata consistent enough for automation, dashboards, alert routing, and release workflows.
+
+
+## Bootstrap Manifest
+
+When a service is created, the API returns a bootstrap manifest with paved-road defaults for service onboarding.
+
+The manifest includes:
+- `repo_template`: default service template
+- `ci_workflow`: default CI workflow
+- `dockerfile`: whether Docker support should be generated
+- `health_check_path`: default health check endpoint
+- `metrics_path`: default metrics endpoint
+- `dashboard`: default observability dashboard
+- `alerts`: default alert policies
+
+Example response:
+```json
+{
+  "service": {
+    "id": "svc-bootstrap",
+    "name": "Bootstrap Service",
+    "owner": "Platform Team",
+    "environment": "dev",
+    "tier": "tier-1",
+    "language": "go"
+  },
+  "bootstrap": {
+    "repo_template": "go-service-template",
+    "ci_workflow": "github-actions-go",
+    "dockerfile": true,
+    "health_check_path": "/health",
+    "metrics_path": "/metrics",
+    "dashboard": "default-service-dashboard",
+    "alerts": ["high-error-rate", "high-latency"]
+  }
+}
+```
