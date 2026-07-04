@@ -42,6 +42,21 @@ type Service struct {
 	UpdatedAt    string `json:"updated_at"`
 }
 
+type BootstrapManifest struct {
+	RepoTemplate    string   `json:"repo_template"`
+	CIWorkflow      string   `json:"ci_workflow"`
+	Dockerfile      bool     `json:"dockerfile"`
+	HealthCheckPath string   `json:"health_check_path"`
+	MetricsPath     string   `json:"metrics_path"`
+	Dashboard       string   `json:"dashboard"`
+	Alerts          []string `json:"alerts"`
+}
+
+type CreateServiceResponse struct {
+	Service   Service           `json:"service"`
+	Bootstrap BootstrapManifest `json:"bootstrap"`
+}
+
 var (
 	servicesByID = map[string]Service{}
 	servicesMu   sync.Mutex
@@ -213,7 +228,20 @@ func createServiceHandler(w http.ResponseWriter, s *http.Request) {
 	servicesByID[service.ID] = service
 	servicesMu.Unlock()
 
-	writeJSON(w, http.StatusCreated, service)
+	response := CreateServiceResponse{
+		Service: service,
+		Bootstrap: BootstrapManifest{
+			RepoTemplate:    "go-service-template",
+			CIWorkflow:      "github-actions-go",
+			Dockerfile:      true,
+			HealthCheckPath: "/health",
+			MetricsPath:     "/metrics",
+			Dashboard:       "default-service-dashboard",
+			Alerts:          []string{"high-error-rate", "high-latency"},
+		},
+	}
+
+	writeJSON(w, http.StatusCreated, response)
 }
 
 func listServicesHandler(w http.ResponseWriter, s *http.Request) {

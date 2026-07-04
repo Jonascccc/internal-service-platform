@@ -194,8 +194,9 @@ func TestCreateServiceSetsTimestamps(t *testing.T) {
 		t.Fatalf("expected status %d, got %d, body: %s", http.StatusCreated, rec.Code, rec.Body.String())
 	}
 
-	var service Service
-	err := json.NewDecoder(rec.Body).Decode(&service)
+	var response CreateServiceResponse
+	err := json.NewDecoder(rec.Body).Decode(&response)
+	service := response.Service
 	if err != nil {
 		t.Fatalf("failed to decode response body: %v", err)
 	}
@@ -279,8 +280,9 @@ func TestCreateServiceDefaultsTier(t *testing.T) {
 		t.Fatalf("expected code %d, but got status code %d, the error body is %v", http.StatusCreated, rec.Code, rec.Body.String())
 	}
 
-	var service Service
-	err := json.NewDecoder(rec.Body).Decode(&service)
+	var response CreateServiceResponse
+	err := json.NewDecoder(rec.Body).Decode(&response)
+	service := response.Service
 	if err != nil {
 		t.Fatalf("unable to decode the reponse body: %v", err)
 	}
@@ -320,11 +322,13 @@ func TestCreateServiceDefaultsLanguage(t *testing.T) {
 		t.Fatalf("expected code %d, got %d", http.StatusCreated, rec.Code)
 	}
 
-	var service Service
-	err := json.NewDecoder(rec.Body).Decode(&service)
+	var response CreateServiceResponse
+	err := json.NewDecoder(rec.Body).Decode(&response)
 	if err != nil {
 		t.Fatalf("unable to parse the response result: %v", err)
 	}
+
+	service := response.Service
 
 	if service.Language != "go" {
 		t.Fatalf("expected default language is %q, got %q", "go", service.Language)
@@ -379,5 +383,59 @@ func TestCreateServiceInvalidSlackChannelReturns400(t *testing.T) {
 
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected code %d, got %d, the body is: %v", http.StatusBadRequest, rec.Code, rec.Body.String())
+	}
+}
+
+func TestCreateServiceReturnsBootstrapManifest(t *testing.T) {
+	resetStore()
+
+	body := `{"id":"svc-bootstrap","name":"Bootstrap Service","owner":"Platform Team","language":"go","tier":"tier-1"}`
+
+	req := httptest.NewRequest(http.MethodPost, "/services", strings.NewReader(body))
+	rec := httptest.NewRecorder()
+
+	serviceHandler(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("exptected status code %d, got %d", http.StatusCreated, rec.Code)
+	}
+
+	var serviceResponse CreateServiceResponse
+
+	err := json.NewDecoder(rec.Body).Decode(&serviceResponse)
+	if err != nil {
+		t.Fatalf("cannot parse the result response, got %v", err)
+	}
+
+	if serviceResponse.Service.ID != "svc-bootstrap" {
+		t.Fatalf("expected to have id %q, got %q", "svc-boostrap", serviceResponse.Service.ID)
+	}
+
+	if serviceResponse.Bootstrap.RepoTemplate != "go-service-template" {
+		t.Fatalf("expected to have id %q, got %q", "svc-boostrap", serviceResponse.Bootstrap.RepoTemplate)
+	}
+
+	if serviceResponse.Bootstrap.CIWorkflow != "github-actions-go" {
+		t.Fatalf("expected to have id %q, got %q", "svc-boostrap", serviceResponse.Bootstrap.CIWorkflow)
+	}
+
+	if !serviceResponse.Bootstrap.Dockerfile {
+		t.Fatalf("expected dockerfile to be enabled")
+	}
+
+	if serviceResponse.Bootstrap.HealthCheckPath != "/health" {
+		t.Fatalf("expted health check path %q, got %q", "/health", serviceResponse.Bootstrap.HealthCheckPath)
+	}
+
+	if serviceResponse.Bootstrap.Dashboard != "default-service-dashboard" {
+		t.Fatalf("expected bootstrap dashboard %q, got %q", "default-service-dashboard", serviceResponse.Bootstrap.Dashboard)
+	}
+
+	if serviceResponse.Bootstrap.MetricsPath != "/metrics" {
+		t.Fatalf("exptected metrics path %q, got %q", "/metrics", serviceResponse.Bootstrap.MetricsPath)
+	}
+
+	if len(serviceResponse.Bootstrap.Alerts) != 2 {
+		t.Fatalf("expected 2 alerts, got %d", len(serviceResponse.Bootstrap.Alerts))
 	}
 }
