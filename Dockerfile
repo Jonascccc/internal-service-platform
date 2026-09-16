@@ -13,6 +13,10 @@ FROM alpine:3.20
 
 WORKDIR /app
 
+RUN adduser -D jonas
+
+USER jonas
+
 COPY --from=builder /app/service-registry-api .
 
 EXPOSE 8080

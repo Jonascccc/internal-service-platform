@@ -1,12 +1,17 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"log"
 	"net/http"
+	"os"
+	"os/signal"
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
+	"syscall"
 	"time"
 )
 
@@ -60,6 +65,7 @@ type CreateServiceResponse struct {
 var (
 	servicesByID = map[string]Service{}
 	servicesMu   sync.Mutex
+	ready        atomic.Bool
 )
 
 func writeJSON(w http.ResponseWriter, status int, data any) {
@@ -281,17 +287,75 @@ func serviceHandler(w http.ResponseWriter, s *http.Request) {
 	}
 }
 
+func readyzHandler(w http.ResponseWriter, s *http.Request) {
+	if s.Method != http.MethodGet {
+		writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{
+			Error: ErrorDetail{
+				Code:    "method_not_allowed",
+				Message: "method not allowed",
+			},
+		})
+		return
+	}
+
+	if !ready.Load() {
+		writeJSON(w, http.StatusServiceUnavailable, ErrorResponse{
+			Error: ErrorDetail{
+				Code:    "service_is_not_available_now",
+				Message: "service is not available now",
+			},
+		})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, HealthResponse{
+		Status:  "ok",
+		Service: "service-registry-api",
+	})
+}
+
 func main() {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/health", healthHandler)
 	mux.HandleFunc("/version", versionHandler)
 	mux.HandleFunc("/services", serviceHandler)
+	mux.HandleFunc("/readyz", readyzHandler)
 
+	value, exists := os.LookupEnv("PORT")
 	addr := ":8080"
-	log.Println("start listening on port 8080")
 
-	if err := http.ListenAndServe(addr, mux); err != nil {
-		log.Fatal(err)
+	if exists {
+		addr = ":" + value
+	} else {
+		log.Printf("port is %s", value)
+	}
+
+	log.Printf("start listening on port %s", addr)
+	ready.Store(true)
+
+	server := &http.Server{
+		Addr:    addr,
+		Handler: mux,
+	}
+
+	go func() {
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatal(err)
+		}
+	}()
+
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, os.Interrupt)
+	defer stop()
+
+	<-ctx.Done()
+
+	ready.Store(false)
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	if err := server.Shutdown(shutdownCtx); err != nil {
+		log.Println("error in shutting down the in flight request")
 	}
 }
